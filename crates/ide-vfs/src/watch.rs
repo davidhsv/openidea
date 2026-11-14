@@ -17,7 +17,7 @@ use notify::{ErrorKind, Event, EventKind, PollWatcher, RecommendedWatcher, Recur
 use parking_lot::{Condvar, Mutex, RwLock};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -30,6 +30,47 @@ const POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// Directories watched synchronously in [`Watcher::start`] before handing the
 /// remainder of a large tree to the watcher thread.
 const SYNC_WATCH_BUDGET: usize = 256;
+/// FSEvents streams the watchers of this process may hold at once. macOS starts no more than
+/// 512 streams in a process (fewer while other processes hold many) and tells nobody: a stream
+/// past the limit starts without error and never reports a change. Past this count a watcher
+/// polls instead, which is slower and coarser but not silent.
+const MAX_FSEVENT_STREAMS: usize = 512;
+
+static FSEVENT_STREAMS: StreamBudget = StreamBudget::new(MAX_FSEVENT_STREAMS);
+
+/// How many FSEvents streams the watchers of this process hold.
+pub fn fsevent_streams() -> usize {
+    FSEVENT_STREAMS.live.load(Ordering::SeqCst)
+}
+
+/// A count of OS watch streams with a ceiling.
+struct StreamBudget {
+    live: AtomicUsize,
+    max: usize,
+}
+
+impl StreamBudget {
+    const fn new(max: usize) -> Self {
+        Self { live: AtomicUsize::new(0), max }
+    }
+
+    /// One more stream, or `None` once the budget is spent.
+    fn take(&'static self) -> Option<StreamSlot> {
+        self.live
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |live| (live < self.max).then_some(live + 1))
+            .ok()
+            .map(|_| StreamSlot(self))
+    }
+}
+
+/// A stream counted in its budget until dropped.
+struct StreamSlot(&'static StreamBudget);
+
+impl Drop for StreamSlot {
+    fn drop(&mut self) {
+        self.0.live.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 /// How directories are registered with the OS.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,6 +108,8 @@ type SharedExcludes = Arc<RwLock<ExcludeMatcher>>;
 struct Inner {
     state: Arc<DirState>,
     thread: Option<JoinHandle<()>>,
+    /// The OS stream's place in its budget, given back once the stream has stopped.
+    _slot: Option<StreamSlot>,
 }
 
 impl Watcher {
@@ -161,6 +204,26 @@ impl Watcher {
         mode: WatchMode,
         config: notify::Config,
     ) -> IdeResult<Inner> {
+        Self::start_counted::<W>(root, filter, emit, mode, config, &FSEVENT_STREAMS)
+    }
+
+    fn start_counted<W: notify::Watcher + Send + 'static>(
+        root: &Path,
+        filter: EventFilter,
+        emit: Emit,
+        mode: WatchMode,
+        config: notify::Config,
+        streams: &'static StreamBudget,
+    ) -> IdeResult<Inner> {
+        let slot = match W::kind() {
+            WatcherKind::Fsevent => Some(streams.take().ok_or_else(|| {
+                io_error(format!(
+                    "cannot start file watcher: this process already watches {} folders through FSEvents",
+                    streams.max
+                ))
+            })?),
+            _ => None,
+        };
         let polled = W::kind() == WatcherKind::PollWatcher;
         let state = Arc::new(DirState {
             filter,
@@ -205,7 +268,7 @@ impl Watcher {
                 .spawn(move || state.run(deferred, &*emit))
                 .map_err(|e| io_error(format!("cannot start file watcher: {e}")))?
         };
-        Ok(Inner { state, thread: Some(thread) })
+        Ok(Inner { state, thread: Some(thread), _slot: slot })
     }
 }
 
@@ -1370,6 +1433,62 @@ mod tests {
         fn kind() -> WatcherKind {
             WatcherKind::NullWatcher
         }
+    }
+
+    /// An OS stream that starts without error and reports nothing, as FSEvents does for a
+    /// process past its stream limit.
+    struct SilentStream;
+
+    impl notify::Watcher for SilentStream {
+        fn new<F: notify::EventHandler>(_: F, _: notify::Config) -> notify::Result<Self> {
+            Ok(Self)
+        }
+
+        fn watch(&mut self, _: &Path, _: RecursiveMode) -> notify::Result<()> {
+            Ok(())
+        }
+
+        fn unwatch(&mut self, _: &Path) -> notify::Result<()> {
+            Ok(())
+        }
+
+        fn kind() -> WatcherKind {
+            WatcherKind::Fsevent
+        }
+    }
+
+    /// A stream past the budget is refused, so the watcher polls instead of staying silent; a
+    /// watcher dropped gives its stream back, and one that polls takes none.
+    #[test]
+    fn a_stream_past_the_budget_is_refused_until_one_is_given_back() {
+        static STREAMS: StreamBudget = StreamBudget::new(1);
+        let tmp = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
+        let start = || {
+            let emit: Emit = Arc::new(|_: &FsBatch| {});
+            let filter = EventFilter::new(root.clone(), &[]);
+            Watcher::start_counted::<SilentStream>(
+                &root,
+                filter,
+                emit,
+                WatchMode::Recursive,
+                Default::default(),
+                &STREAMS,
+            )
+        };
+        let first = start().expect("the first stream fits the budget");
+        assert_eq!(STREAMS.live.load(Ordering::SeqCst), 1);
+        let refused = start().err().expect("a second stream is past the budget");
+        assert!(refused.message.contains("already watches 1 folders through FSEvents"), "{}", refused.message);
+        let emit: Emit = Arc::new(|_: &FsBatch| {});
+        let filter = EventFilter::new(root.clone(), &[]);
+        let polled = Watcher::start_polling(&root, filter, emit, WatchMode::Recursive).expect("polling starts");
+        assert_eq!(STREAMS.live.load(Ordering::SeqCst), 1, "polling holds no stream");
+        drop(first);
+        assert_eq!(STREAMS.live.load(Ordering::SeqCst), 0);
+        let again = start().expect("the stream given back is free again");
+        drop((again, polled));
+        assert_eq!(STREAMS.live.load(Ordering::SeqCst), 0);
     }
 
     /// #1915: a watch refused mid-tree must not stay silent — the limit is

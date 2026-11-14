@@ -236,6 +236,7 @@ impl RcKeymap {
 mod tests {
     use super::super::rc::parse_vimrc;
     use super::*;
+    mod proofs8_vim;
 
     const ACTIONS: [&str; 4] = ["navigate.declaration", "code.reformat", "file.save", "editor.closeTab"];
 

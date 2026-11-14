@@ -1047,6 +1047,7 @@ mod tests {
     mod project_plugins_per_window;
     mod proofs6_plugins;
     mod proofs6_plugins_market;
+    mod proofs9_settings_plugins;
 
     use super::test_support::{CapturedLog, link, plugin_copy, start_with_plugins, trusted_project};
     use super::*;

@@ -42,6 +42,30 @@ fn trash_into_test_home(host: &Arc<Host>, dirs: &AppDirs) {
     trashes.push(Arc::downgrade(host));
 }
 
+/// The projects a test's backend opened, closed when the test's thread ends. A test app is never
+/// shut down (its windows stay, and with them their projects), so without this every project a
+/// test opened keeps its file watchers and workers until the test binary exits, and the process
+/// runs out of the FSEvents streams macOS allows it.
+#[cfg(test)]
+struct CloseWhenTheTestEnds {
+    host: Arc<Host>,
+    windows: Arc<parking_lot::Mutex<std::collections::BTreeSet<String>>>,
+}
+
+#[cfg(test)]
+impl Drop for CloseWhenTheTestEnds {
+    fn drop(&mut self) {
+        for window in std::mem::take(&mut *self.windows.lock()) {
+            self.host.close_project_detached(&window);
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_PROJECTS: std::cell::RefCell<Vec<CloseWhenTheTestEnds>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 /// Deletes `path` as File › Delete does ([`ide_host::ops::fs::delete`]): Local History keeps its
 /// contents and it moves to the system Trash, or where the host's override says. In a test build a
 /// host without the test trash of [`Backend::start`] panics instead of reaching the system Trash.
@@ -200,6 +224,8 @@ impl Backend {
             LanguageRegistry::load(Some(&dirs.config.join("languages"))).map_err(|e| anyhow::anyhow!(e.message))?,
         );
         let (sender, events) = unbounded();
+        #[cfg(test)]
+        let windows: Arc<parking_lot::Mutex<std::collections::BTreeSet<String>>> = Arc::default();
         let host = Arc::new(Host::new(HostConfig {
             config_dir: dirs.config.clone(),
             data_dir: dirs.data.clone(),
@@ -208,7 +234,11 @@ impl Backend {
             syntax,
             sink_for: Box::new({
                 let sender = sender.clone();
+                #[cfg(test)]
+                let windows = windows.clone();
                 move |window| -> SharedSink {
+                    #[cfg(test)]
+                    windows.lock().insert(window.to_owned());
                     Arc::new(ChannelSink { window: Some(window.to_owned()), events: sender.clone() })
                 }
             }),
@@ -218,6 +248,8 @@ impl Backend {
         }));
         #[cfg(test)]
         trash_into_test_home(&host, &dirs);
+        #[cfg(test)]
+        TEST_PROJECTS.with(|projects| projects.borrow_mut().push(CloseWhenTheTestEnds { host: host.clone(), windows }));
         let backend = Self {
             host,
             dirs,

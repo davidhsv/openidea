@@ -1545,6 +1545,8 @@ impl Workbench {
             tabs.panes.iter().flat_map(|pane| pane.tabs.iter().map(|tab| tab.id.as_str())).collect();
         find_bars.retain(|id, _| open.contains(id.as_str()));
         let closed: Vec<String> = editors.keys().filter(|id| !open.contains(id.as_str())).cloned().collect();
+        // The unsaved editors of closed tabs: the close writes them, so leaving them does not.
+        let mut closing = Vec::new();
         for id in closed {
             editor_focus.remove(&id);
             let Some(editor) = editors.remove(&id) else { continue };
@@ -1554,6 +1556,7 @@ impl Workbench {
             if !editor.read(cx).is_dirty() {
                 continue;
             }
+            closing.push(editor.clone());
             let decision = (!auto_save).then(|| {
                 let path = editor.read(cx).path().to_string_lossy().into_owned();
                 let i18n = &cx.default_global::<crate::platform::i18n::Localization>().0;
@@ -1603,7 +1606,9 @@ impl Workbench {
         let target = self.active_focus_target(cx);
         // The editor that was active is saved when another one takes its place.
         let previous = self.previous_editor.take().and_then(|previous| previous.upgrade());
-        if let Some(previous) = previous.filter(|previous| active.as_ref() != Some(previous)) {
+        if let Some(previous) =
+            previous.filter(|previous| active.as_ref() != Some(previous) && !closing.contains(previous))
+        {
             self.autosave(Some(&previous), cx);
         }
         self.previous_editor = active.as_ref().map(Entity::downgrade);
@@ -2165,7 +2170,21 @@ impl Workbench {
                 COMMIT_TOOL_WINDOW => {
                     use crate::vcs::commit_view::{CommitPanel, CommitPanelEvent};
                     let (label, root) = (self.label.clone(), root.clone());
-                    let changes = cx.new(|cx| CommitPanel::new(&label, root, cx));
+                    let repository = self.vcs_state().filter(|vcs| vcs.available);
+                    let status = repository.map(|vcs| if vcs.status_loaded { vcs.status.clone() } else { Vec::new() });
+                    let fresh = status.is_some().then(|| self.request_vcs_refresh(cx));
+                    let changes = cx.new(|cx| CommitPanel::following_window(&label, root, status, cx));
+                    if let Some(fresh) = fresh {
+                        let panel = changes.downgrade();
+                        cx.spawn(async move |_, cx| {
+                            // Settled, or dropped with the project's repository: either way no
+                            // read is coming, and the panel shows what it has.
+                            let _ = fresh.await;
+                            // The panel may have gone with its tool window.
+                            let _ = panel.update(cx, |panel, cx| panel.window_read_shown(cx));
+                        })
+                        .detach();
+                    }
                     let opens =
                         cx.subscribe_in(&changes, window, |workbench, _, event: &CommitPanelEvent, window, cx| {
                             workbench.commit_panel_event(event, window, cx);
@@ -4095,6 +4114,10 @@ mod tests {
     mod proofs6_workbench;
     mod proofs7_bookmark_digits;
     mod proofs7_quit;
+    mod proofs8_build;
+    mod proofs8_file_refactor;
+    mod proofs9_log_users;
+    mod proofs9_run_chooser;
     mod proofs_agents;
     mod proofs_database;
     mod proofs_editor_actions_find;
@@ -4157,15 +4180,32 @@ mod tests {
         assert!(!cx.update(|_, cx| cx.global::<theme::ActiveTheme>().is_dark()));
     }
 
+    /// Waits for `done` while the backend's work comes back, without moving the executor's clock.
+    /// Its budget is that of [`wait_long`]: on a loaded machine opening a project alone can take
+    /// longer than three seconds.
     fn settle(cx: &mut VisualTestContext, done: impl Fn(&mut VisualTestContext) -> bool) {
-        for _ in 0..300 {
+        let started = std::time::Instant::now();
+        let poll = |cx: &mut VisualTestContext| {
             cx.run_until_parked();
-            if done(cx) {
+            let reached = done(cx);
+            if !reached {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            reached
+        };
+        for _ in 0..3000 {
+            if poll(cx) {
                 return;
             }
-            std::thread::sleep(Duration::from_millis(10));
         }
-        panic!("the backend did not deliver within three seconds");
+        // The state when the wait runs out, and whether more time would have been enough.
+        let report = window_vcs_report(cx);
+        let ran_out = started.elapsed();
+        let later = (0..3000).find(|_| poll(cx)).map(|_| started.elapsed());
+        panic!(
+            "the backend did not deliver within thirty seconds (ran out after {ran_out:?}; reached later: {later:?})\n\
+             state when it ran out: {report}"
+        );
     }
 
     #[gpui_kit::test]
@@ -4778,6 +4818,11 @@ mod tests {
         lock(0o644, &file);
         cx.simulate_keystrokes("cmd-s");
         settle(cx, |_| std::fs::read_to_string(&file).is_ok_and(|text| text == "my notes\n"));
+        // The close wrote the document once: one failure, reported with the tab that came back.
+        let failures = workbench.read_with(cx, |w, _| {
+            w.notifications().items().iter().filter(|n| n.title == "Could not save all files").count()
+        });
+        assert_eq!(failures, 1, "{:?}", notification_titles(&workbench, cx));
         let host = cx.update(|_, cx| cx.global::<Backend>().host.clone());
         host.close_project("w1");
     }
@@ -7653,10 +7698,39 @@ mod tests {
                         format!("loaded={} modified={}", view.text().is_some(), view.is_modified())
                     });
                     let notices: Vec<&str> = w.notifications().items().iter().map(|n| n.title.as_str()).collect();
+                    let tree = w.project_tree().map(|tree| tree.read(cx).trace_report());
+                    let runs: Vec<String> = w.run_driver().map_or_else(Vec::new, |driver| {
+                        let store = driver.read(cx).store().read(cx);
+                        store
+                            .sessions
+                            .iter()
+                            .map(|run| {
+                                let lines = store.console(&run.id).map(|console| console.lines()).unwrap_or_default();
+                                let last: Vec<&str> =
+                                    lines.iter().rev().take(4).rev().map(|line| line.text.as_str()).collect();
+                                format!(
+                                    "  {} process={:?} {:?} exit={:?} stopped={} started={:.0} ended={:?} \
+                                     last={last:?}",
+                                    run.config.name,
+                                    run.run_id,
+                                    run.status,
+                                    run.exit_code,
+                                    run.stopped,
+                                    run.started_at,
+                                    run.ended_at
+                                )
+                            })
+                            .collect()
+                    });
                     format!(
-                        "merge editor={merge:?} question={} notices={notices:?} {}",
+                        "FSEvents streams of this process: {}\n\
+                         merge editor={merge:?} question={} notices={notices:?} {}\n\
+                         project tree:\n{}\nruns:\n{}",
+                        ide_vfs::fsevent_streams(),
                         w.vcs_prompt().is_some(),
-                        w.vcs_report()
+                        w.vcs_report(),
+                        tree.unwrap_or_default(),
+                        runs.join("\n")
                     )
                 })
             },
@@ -8685,6 +8759,41 @@ for line in sys.stdin:
         assert_eq!(git_head(&root), "feature");
         wait_for_notice(&workbench, "Checked out feature", cx);
         assert!(!workbench.read_with(cx, |w, _| w.git_gate_closed()), "the checkout released the gate");
+    }
+
+    /// While a Git command of the window runs, neither a change the backend reports nor the reread
+    /// after a commit makes the Commit panel read the repository itself (a status read writes the
+    /// index the command may need): the window's own read waits for the command, and once it has
+    /// ended the panel shows what that read found.
+    #[gpui_kit::test]
+    async fn the_commit_panel_reads_nothing_itself_while_a_git_command_of_the_window_runs(cx: &mut TestAppContext) {
+        let (workbench, cx, _dirs, root) = git_project(cx, init_repo);
+        run_action(cx, "vcs.commit", None);
+        let (panel, _) = commit_parts(&workbench, cx);
+        let own_reads = |cx: &mut VisualTestContext| panel.read_with(cx, |panel, _| panel.own_reads());
+        assert_eq!(own_reads(cx), 0, "the panel starts from the window's read");
+        let hanging = workbench.update_in(cx, |_, window, cx| {
+            cx.spawn_in(window, async move |this, cx| {
+                let never = |_, _| futures::future::pending::<ide_core::IdeResult<()>>();
+                branches::run_op::<(), _>(&this, cx, "Hang", None, false, never).await
+            })
+        });
+        wait_long(cx, "the hanging command takes the gate", |cx| workbench.read_with(cx, |w, _| w.git_gate_closed()));
+
+        std::fs::write(root.join("a.txt"), "changed\n").expect("the file is written");
+        let changed = IdeEvent::VcsChanged { root: ide_core::IpcPath(root.clone()) };
+        cx.update(|_, cx| cx.global::<Backend>().emit(Some("w1"), changed));
+        workbench.update(cx, |workbench, cx| workbench.reread_commit_views(cx));
+        wait_long(cx, "the window's read waits for the command", |cx| {
+            workbench.read_with(cx, |w, _| w.vcs_report().contains("read deferred=true"))
+        });
+        assert_eq!(own_reads(cx), 0, "the panel read nothing while the command ran");
+
+        drop(hanging);
+        wait_long(cx, "the panel shows the window's read", |cx| {
+            panel.read_with(cx, |panel, _| panel.lines().iter().any(|line| line.contains("a.txt")))
+        });
+        assert_eq!(own_reads(cx), 0);
     }
 
     /// A remote operation whose future is dropped while it waits for the gate leaves nothing marked

@@ -430,6 +430,7 @@ async fn run_refactoring(
     options: RefactorOptions,
     label: RefactorLabel,
     dialog: Option<AnyView>,
+    stop: Arc<SearchStop>,
 ) -> anyhow::Result<RefactorStatus> {
     if moves.is_empty() {
         return Ok(RefactorStatus::Cancelled);
@@ -438,9 +439,9 @@ async fn run_refactoring(
     if searching {
         save_all(&this, cx).await?;
     }
-    let stop = Arc::new(SearchStop::default());
-    this.update(cx, |workbench, _| workbench.files.reference_search = Some(stop.clone()))?;
-    let collected = if searching {
+    let collected = if stop.is_stopped() {
+        None
+    } else if searching {
         collect_edits(&this, cx, &moves, options, &stop).await?
     } else {
         Some(Collected { edit: WorkspaceEdit::default(), errors: Vec::new() })
@@ -539,6 +540,14 @@ impl Workbench {
             }
         }
         result
+    }
+
+    /// Starts the reference search of a refactoring: from now on its dialog's Cancel stops it, also
+    /// before the search itself has begun.
+    fn start_reference_search(&mut self) -> Arc<SearchStop> {
+        let stop = Arc::new(SearchStop::default());
+        self.files.reference_search = Some(stop.clone());
+        stop
     }
 
     /// Starts an operation in place of any that waits; `done` runs once it is done.
@@ -797,8 +806,9 @@ impl Workbench {
             Request::Refactor { moves, label } => {
                 let stored = cx.try_global::<UiStorage>().and_then(|storage| storage.get(&refactor_options_key(label)));
                 let options = load_refactor_options(stored);
+                let stop = self.start_reference_search();
                 cx.spawn_in(window, async move |this, cx| {
-                    let status = run_refactoring(this.clone(), cx, moves, options, label, None).await;
+                    let status = run_refactoring(this.clone(), cx, moves, options, label, None, stop).await;
                     let status = status.unwrap_or(RefactorStatus::Failed);
                     let _ = this.update_in(cx, |workbench, window, cx| {
                         workbench.resume_flow(id, Reply::Refactored(status), window, cx);
@@ -1239,9 +1249,11 @@ impl Workbench {
                     _ => None,
                 };
                 let view = AnyView::from(dialog.clone());
+                let stop = self.start_reference_search();
                 cx.spawn_in(window, async move |this, cx| {
                     let status =
-                        run_refactoring(this.clone(), cx, moves.clone(), options, label, Some(view.clone())).await;
+                        run_refactoring(this.clone(), cx, moves.clone(), options, label, Some(view.clone()), stop)
+                            .await;
                     this.update_in(cx, |workbench, window, cx| {
                         workbench.close_dialog_of(&view, window, cx);
                         if !matches!(status, Ok(RefactorStatus::Done)) {

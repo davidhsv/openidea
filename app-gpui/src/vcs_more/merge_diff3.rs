@@ -375,6 +375,7 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::{Random, lines};
     use super::*;
+    mod proofs8_chunk_optimizer;
 
     /// The text of a side rebuilt from the base and the changes: it must give the version back.
     /// The texts are ASCII, so UTF-16 offsets are byte offsets.

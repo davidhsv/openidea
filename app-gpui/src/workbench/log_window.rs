@@ -246,9 +246,26 @@ impl Workbench {
                 self.filter_log(LogFiltersPatch { branches: Some(branches), ..LogFiltersPatch::default() }, cx);
             }
             LogFilterEvent::LoadUsers => {
+                // Every repository of the project names its authors; one that cannot be read names none.
+                let roots: Vec<PathBuf> =
+                    self.vcs_state().map(|vcs| vcs.roots.iter().map(PathBuf::from).collect()).unwrap_or_default();
                 let task = self.log_read(
                     cx,
-                    |host, label| async move { git::vcs_log_users(&host, &label, None).await },
+                    move |host, label| async move {
+                        if roots.is_empty() {
+                            return git::vcs_log_users(&host, &label, None).await;
+                        }
+                        let mut users = Vec::new();
+                        for root in roots {
+                            match git::vcs_log_users(&host, &label, Some(root)).await {
+                                Ok(found) => users.extend(found),
+                                Err(error) => tracing::debug!("a repository's users cannot be read: {}", error.message),
+                            }
+                        }
+                        users.sort();
+                        users.dedup();
+                        Ok(users)
+                    },
                     |workbench, users, cx| {
                         let users = users.unwrap_or_else(|error| {
                             tracing::warn!("the repository's users cannot be read: {error}");

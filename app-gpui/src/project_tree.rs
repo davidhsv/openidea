@@ -177,9 +177,15 @@ pub struct ProjectTree {
     selected: Option<String>,
     /// Folders being read.
     inflight: BTreeSet<String>,
+    /// Folders asked to be read again while a read of theirs was under way: that read may have
+    /// listed the folder before the change, so another one follows it.
+    read_again: BTreeSet<String>,
     /// How many folder listings the tree asked the backend for.
     #[cfg(test)]
     folder_reads: usize,
+    /// What reached the tree and what it read, with the time, for a test whose wait runs out.
+    #[cfg(test)]
+    trace: Vec<String>,
     /// A path to select and scroll to once its row exists.
     reveal: Option<String>,
     scroll: UniformListScrollHandle,
@@ -227,8 +233,11 @@ impl ProjectTree {
             model: TreeModel::default(),
             selected: None,
             inflight: BTreeSet::new(),
+            read_again: BTreeSet::new(),
             #[cfg(test)]
             folder_reads: 0,
+            #[cfg(test)]
+            trace: Vec::new(),
             reveal: None,
             scroll: UniformListScrollHandle::new(),
             listener,
@@ -344,11 +353,17 @@ impl ProjectTree {
             return;
         }
         if !self.inflight.insert(path.to_owned()) {
+            if force {
+                self.read_again.insert(path.to_owned());
+            }
+            #[cfg(test)]
+            self.trace_line(format!("read of {path} asked while one is in flight; again after it: {force}"));
             return;
         }
         #[cfg(test)]
         {
             self.folder_reads += 1;
+            self.trace_line(format!("read of {path} starts"));
         }
         let (window, dir, path) = (self.window_label.clone(), PathBuf::from(path), path.to_owned());
         let listing = cx
@@ -359,7 +374,15 @@ impl ProjectTree {
             let _ = tree.update(cx, |tree: &mut ProjectTree, cx| {
                 tree.inflight.remove(&path);
                 let read = listing.unwrap_or_else(|error| Err(IdeError::internal(format!("{error:#}"))));
+                #[cfg(test)]
+                tree.trace_line(match &read {
+                    Ok(entries) => format!("read of {path} done: {} entries", entries.len()),
+                    Err(error) => format!("read of {path} failed: {}", error.message),
+                });
                 tree.put_read(&path, read, cx);
+                if tree.read_again.remove(&path) {
+                    tree.load_dir(&path, true, cx);
+                }
             });
         })
         .detach();
@@ -421,6 +444,8 @@ impl ProjectTree {
         };
         match &event.event {
             IdeEvent::FsChanged { created, modified, removed } => {
+                #[cfg(test)]
+                self.trace_line(format!("event fs created={created:?} modified={modified:?} removed={removed:?}"));
                 self.apply_fs_change(&paths(created), &paths(modified), &paths(removed), cx);
             }
             // Ignored Files and Folders is read live: the rows follow the setting.
@@ -470,6 +495,17 @@ impl ProjectTree {
     #[cfg(test)]
     pub(crate) fn folder_reads(&self) -> usize {
         self.folder_reads
+    }
+
+    #[cfg(test)]
+    fn trace_line(&mut self, line: String) {
+        self.trace.push(format!("{:.0} {line}", crate::platform::local_time::now_ms()));
+    }
+
+    /// The last lines of what reached the tree and what it read.
+    #[cfg(test)]
+    pub(crate) fn trace_report(&self) -> String {
+        self.trace.iter().rev().take(30).rev().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n")
     }
 
     /// Re-reads every loaded folder (View › Reload from Disk).
@@ -936,9 +972,12 @@ mod tests {
                 removed: Vec::new(),
             },
         };
-        tree.update(cx, |tree, cx| tree.backend_event(&event("w2"), cx));
-        cx.run_until_parked();
-        assert!(tree.read_with(cx, |tree, _| tree.inflight.is_empty()));
+        // Another window's change starts no read; the tree's own watcher may be reading meanwhile.
+        tree.update(cx, |tree, cx| {
+            let reads = tree.folder_reads();
+            tree.backend_event(&event("w2"), cx);
+            assert_eq!(tree.folder_reads(), reads, "another window's change reads nothing");
+        });
         tree.update(cx, |tree, cx| tree.backend_event(&event("w1"), cx));
         settle(cx, |cx| labels(&tree, cx).contains(&"TODO.md".to_owned()));
 
@@ -952,6 +991,31 @@ mod tests {
             assert!(!tree.is_loaded(&docs) && !tree.is_loaded(&guide));
             assert_eq!(tree.selected(), None);
         });
+        close(cx);
+    }
+
+    /// A change reported while the folder is being read is read again once that read is back: the
+    /// read under way may have listed the folder before the change.
+    #[gpui_kit::test]
+    async fn a_change_reported_while_its_folder_is_read_is_read_again_after(cx: &mut TestAppContext) {
+        let fixture = project(cx, &["README.md"]).await;
+        let root = fixture.root.clone();
+        let (tree, cx) = open_tree(cx, &root);
+        settle(cx, |cx| labels(&tree, cx).contains(&"README.md".to_owned()));
+        let before = tree.read_with(cx, |tree, _| tree.folder_reads());
+        let notes = text(&root.join("NOTES.md"));
+        tree.update(cx, |tree, cx| {
+            tree.load_dir(&text(&root), true, cx);
+            std::fs::write(root.join("NOTES.md"), "").expect("a file");
+            tree.apply_fs_change(std::slice::from_ref(&notes), &[], &[], cx);
+            assert!(tree.read_again.contains(&text(&root)), "the folder is to be read again");
+        });
+        settle(cx, |cx| {
+            tree.read_with(cx, |tree, _| {
+                tree.inflight.is_empty() && tree.read_again.is_empty() && tree.folder_reads() >= before + 2
+            })
+        });
+        assert!(labels(&tree, cx).contains(&"NOTES.md".to_owned()), "{:?}", labels(&tree, cx));
         close(cx);
     }
 

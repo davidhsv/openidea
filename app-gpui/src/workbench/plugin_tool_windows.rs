@@ -771,6 +771,8 @@ mod tests {
     use ide_host::plugins::PluginStatus;
     use serde_json::json;
 
+    mod proofs9_view_icon;
+
     const LABEL: &str = "w1";
     const GREETINGS: &str = "plugin.hello.greetings";
 

@@ -232,8 +232,11 @@ mod tests {
     /// The program the detector runs, standing for a JVM started with a waiting JDWP agent: it
     /// prints its arguments, then JDWP's start-up line with each address in `jdwp.port`, one per
     /// line (when the project has that file), and exits with 3 once the project has a file
-    /// `release` (with 4 after a minute without one, so a failed test leaves nothing running).
+    /// `release` (with 4 after a minute without one, so a failed test leaves nothing running). Like
+    /// a JVM it exits on SIGINT: without the trap a shell whose `sleep` ends just as the signal
+    /// comes takes it as handled and goes on.
     const JVM: &str = "#!/bin/sh\n\
+        trap 'exit 130' INT\n\
         echo \"execution-tool $*\"\n\
         if [ -f jdwp.port ]; then while read -r at || [ -n \"$at\" ]; do\n\
         \x20 echo \"Listening for transport dt_socket at address: $at\"; done < jdwp.port; fi\n\

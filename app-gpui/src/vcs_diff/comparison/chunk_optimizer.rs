@@ -214,6 +214,7 @@ fn to_shift(forward: Option<usize>, backward: Option<usize>) -> Option<isize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    mod proofs8_chunk_optimizer;
 
     fn units(texts: &[&str]) -> Vec<Vec<u16>> {
         texts.iter().map(|text| text.encode_utf16().collect()).collect()

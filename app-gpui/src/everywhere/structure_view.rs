@@ -1022,6 +1022,7 @@ mod tests {
     use ide_core::Visibility;
     use std::cell::RefCell;
     use std::time::Duration;
+    mod proofs8_file_structure;
 
     const PATH: &str = "/project/src/orders.rs";
 

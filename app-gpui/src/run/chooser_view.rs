@@ -707,6 +707,7 @@ mod tests {
     use gpui_kit::{Modifiers, TestAppContext, VisualTestContext};
     use ide_run::RunConfig;
     use std::cell::RefCell;
+    mod proofs8_chooser;
 
     type Events = Rc<RefCell<Vec<ConfigChooserEvent>>>;
 

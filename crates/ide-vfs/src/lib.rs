@@ -32,7 +32,7 @@ pub use encoding::{
 };
 pub use private::create_private_dir;
 pub use rules::ExcludeMatcher;
-pub use watch::{WatchMode, Watcher};
+pub use watch::{WatchMode, Watcher, fsevent_streams};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

@@ -1981,6 +1981,7 @@ mod tests {
     use ide_core::error::ErrorKind;
     use ide_lsp::jdtls::{JavaBuildStatus, JavaCompileError, JavaLaunchInfo};
     use ide_run::BuildPolicy;
+    mod proofs8_removal;
 
     fn strings(items: &[&str]) -> Vec<String> {
         items.iter().map(|item| item.to_string()).collect()

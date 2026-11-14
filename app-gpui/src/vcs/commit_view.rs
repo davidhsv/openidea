@@ -113,6 +113,13 @@ pub struct CommitPanel {
     tabs: Vec<ContentTab>,
     tab: String,
     content: Option<AnyView>,
+    /// The window's own reads of the repository are shown here ([`Self::set_status`]), and the
+    /// panel reads nothing itself: a read of its own would not wait for the window's Git command,
+    /// and a status read writes the index while that command may need it.
+    follows_window: bool,
+    /// How many times the panel read the repository itself.
+    #[cfg(test)]
+    own_reads: usize,
 }
 
 impl EventEmitter<CommitPanelEvent> for CommitPanel {}
@@ -175,7 +182,43 @@ fn flatten(nodes: &[ChangeNode], depth: usize, collapsed: &BTreeSet<String>, row
 }
 
 impl CommitPanel {
+    /// A panel that reads the repository itself, now and on each change the backend reports.
     pub fn new(window_label: &str, root: PathBuf, cx: &mut Context<Self>) -> Self {
+        let mut panel = Self::unread(window_label, root, cx);
+        panel.read(cx);
+        panel
+    }
+
+    /// A panel shown in a project window, which feeds it every read of the repository it makes
+    /// ([`Self::set_status`]). `status`: what the window read last, shown while the panel is loading
+    /// until [`Self::window_read_shown`] says a read made since has reached it; `None` when the
+    /// project is no repository, and the panel then reads once itself.
+    pub fn following_window(
+        window_label: &str,
+        root: PathBuf,
+        status: Option<Vec<FileStatus>>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut panel = Self::unread(window_label, root, cx);
+        panel.follows_window = true;
+        match status {
+            Some(status) => {
+                panel.status = status;
+                panel.loading = true;
+                panel.rebuild(cx);
+            }
+            None => panel.read(cx),
+        }
+        panel
+    }
+
+    /// A read of the window made after the panel was shown has reached it.
+    pub fn window_read_shown(&mut self, cx: &mut Context<Self>) {
+        self.loading = false;
+        cx.notify();
+    }
+
+    fn unread(window_label: &str, root: PathBuf, cx: &mut Context<Self>) -> Self {
         let weak = cx.weak_entity();
         let listener = cx.try_global::<Backend>().is_some().then(|| {
             cx.global_mut::<Backend>().listen(move |event, cx| {
@@ -188,7 +231,7 @@ impl CommitPanel {
             }
         })
         .detach();
-        let mut panel = Self {
+        Self {
             focus: cx.focus_handle(),
             window_label: window_label.to_owned(),
             root: root.to_string_lossy().into_owned(),
@@ -207,9 +250,16 @@ impl CommitPanel {
             tabs: Vec::new(),
             tab: "changes".to_owned(),
             content: None,
-        };
-        panel.read(cx);
-        panel
+            follows_window: false,
+            #[cfg(test)]
+            own_reads: 0,
+        }
+    }
+
+    /// How many times the panel read the repository itself.
+    #[cfg(test)]
+    pub(crate) fn own_reads(&self) -> usize {
+        self.own_reads
     }
 
     pub fn is_loading(&self) -> bool {
@@ -321,7 +371,7 @@ impl CommitPanel {
         if event.window.as_deref().is_some_and(|window| window != self.window_label) {
             return;
         }
-        if matches!(event.event, IdeEvent::VcsChanged { .. }) {
+        if !self.follows_window && matches!(event.event, IdeEvent::VcsChanged { .. }) {
             self.read(cx);
         }
     }
@@ -419,6 +469,10 @@ impl CommitPanel {
     /// Reads the changes again.
     pub fn read(&mut self, cx: &mut Context<Self>) {
         let Some(backend) = cx.try_global::<Backend>() else { return };
+        #[cfg(test)]
+        {
+            self.own_reads += 1;
+        }
         let window = self.window_label.clone();
         let status = backend.with_host(move |host| async move { ide_host::ops::vcs::status(&host, &window).await });
         self.loading = true;
@@ -445,7 +499,9 @@ impl CommitPanel {
     /// Shows `status`, the window's own read of the repository, when it differs from what is shown:
     /// a change in the working tree alone brings no event that would make the view read again.
     pub fn set_status(&mut self, status: Vec<FileStatus>, cx: &mut Context<Self>) {
-        if self.loading || (self.error.is_none() && self.status == status) {
+        // A read of the panel's own in flight answers for itself; a panel following its window
+        // loads only through it.
+        if (self.loading && !self.follows_window) || (self.error.is_none() && self.status == status) {
             return;
         }
         self.error = None;

@@ -2454,6 +2454,7 @@ mod tests {
     use ide_core::{Pos, TextEdit};
     use std::time::Duration;
 
+    mod proofs8_caret_commands;
     mod proofs_editor_highlight_backend;
     mod proofs_editor_highlight_cmake;
     mod proofs_editor_highlight_interpolation;

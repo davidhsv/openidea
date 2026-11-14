@@ -253,13 +253,10 @@ impl Workbench {
         self.sync_commit_box(cx);
     }
 
-    /// The changes tree and the log read the repository again.
-    fn reread_commit_views(&mut self, cx: &mut Context<Self>) {
-        if let Some(panel) =
-            self.tool_window_view(COMMIT_TOOL_WINDOW).and_then(|view| view.downcast::<CommitPanel>().ok())
-        {
-            panel.update(cx, |panel, cx| panel.read(cx));
-        }
+    /// The changes tree and the log read the repository again. The changes tree is fed by the
+    /// window's read, which waits for a Git command of the window (a rebase after the commit).
+    pub(super) fn reread_commit_views(&mut self, cx: &mut Context<Self>) {
+        self.refresh_vcs(cx);
         if let Some(log) = self.tool_window_view(GIT_TOOL_WINDOW).and_then(|view| view.downcast::<GitLog>().ok()) {
             log.update(cx, |log, cx| log.reload(cx));
         }

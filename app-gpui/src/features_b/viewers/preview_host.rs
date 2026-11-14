@@ -300,6 +300,7 @@ mod tests {
     use gpui_kit::{Modifiers, ScrollDelta, ScrollEvent, TestAppContext, VisualTestContext, point};
     use std::cell::RefCell;
     use std::rc::Rc;
+    mod proofs8_preview_only;
 
     type Events = Rc<RefCell<Vec<MarkdownViewEvent>>>;
 

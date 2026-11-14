@@ -1657,6 +1657,9 @@ mod tests {
     use serde_json::{Value, json};
     use std::path::PathBuf;
 
+    mod proofs9_cancel_task;
+    mod proofs9_resolve;
+    mod proofs9_syntax_usages;
     mod proofs_editor_lsp;
     mod proofs_editor_navigation_modifier;
 

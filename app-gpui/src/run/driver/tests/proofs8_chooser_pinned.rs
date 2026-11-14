@@ -1,5 +1,4 @@
 use super::*;
-use gpui_kit::AppContext as _;
 
 /// A new driver of window `label` (a reload of the window) over a fresh store, once it has listed
 /// the configurations of the project at `root`.

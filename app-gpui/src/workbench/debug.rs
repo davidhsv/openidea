@@ -451,6 +451,7 @@ impl Workbench {
             move |workbench, window, cx| {
                 let Some(run) = workbench.run_driver().cloned() else { return };
                 let Some(config) = run.update(cx, |run, cx| run.config_from_arg(arg.as_ref(), cx)) else { return };
+                run.update(cx, |run, cx| run.mark_recent(&config.id, cx));
                 let mut start = json!({ "config": serde_json::to_value(&config).unwrap_or(Value::Null) });
                 if let Some(show) = show {
                     start["show"] = Value::Bool(show);
@@ -1031,6 +1032,7 @@ pub(super) mod tests {
     use std::time::Duration;
     mod proofs3_debug;
     mod proofs6_debug;
+    mod proofs8_recent;
     mod proofs_debug;
 
     /// A debug adapter speaking DAP over stdio. It runs the launched `program` file line by line: it

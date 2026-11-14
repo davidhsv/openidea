@@ -1550,6 +1550,7 @@ mod tests {
     use gpui_kit::{Focusable, TestAppContext, VisualTestContext};
     use std::cell::{Cell, RefCell};
     mod proofs7_github_urls;
+    mod proofs9_github;
 
     const GITHUB_REMOTE: &str = "https://github.com/org/app.git";
 

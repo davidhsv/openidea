@@ -35,7 +35,7 @@ fn temporary_deletion_does_not_persist_suppression() {
     let mut store = RunStore::new();
     store.project_root = Some("/p".into());
     let (temporary, _) = store.adopt_temporary(RunConfig { detected: false, ..cfg("npm:app", "npm") }, &[]);
-    assert_eq!(store.temporary, [temporary.id.clone()]);
+    assert_eq!(store.temporary, std::slice::from_ref(&temporary.id));
     let (persist, saved) = store.delete_config("npm:app");
     assert_eq!(saved, None, "nothing is saved and no detection is suppressed");
     assert!(ids(&store).is_empty());
@@ -68,7 +68,7 @@ fn keeps_other_temporary_and_non_temporary_configurations_on_removal() {
     store.adopt_temporary(moved, &[]);
     store.adopt_temporary(other.clone(), &[]);
     store.drop_stale_context_configs(&strings(&["/p/src/main.cxx"]));
-    assert_eq!(store.temporary, [other.id.clone()]);
+    assert_eq!(store.temporary, std::slice::from_ref(&other.id));
     let listed = ids(&store);
     assert!(listed.contains(&"maven:spring-boot:run".to_owned()) && listed.contains(&other.id), "{listed:?}");
 }

@@ -1739,7 +1739,10 @@ mod tests {
         assert!(!log_focus(cx), "the editor has the keyboard");
         cx.write_to_clipboard(ClipboardItem::new_string("before".to_owned()));
         cx.simulate_keystrokes("cmd-alt-shift-c");
-        assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()).as_deref(), Some("before"));
+        let clipboard = |cx: &mut VisualTestContext| cx.read_from_clipboard().and_then(|item| item.text());
+        assert_ne!(clipboard(cx), Some(rev(&root, "HEAD")), "the log's Copy Revision Number does not run");
+        // The key is the editor's Copy Reference, which copies the caret's place once it has read it.
+        wait_long(cx, "the editor's Copy Reference", |cx| clipboard(cx).as_deref() == Some("a.txt:1"));
         cx.simulate_keystrokes("cmd-f");
         cx.run_until_parked();
         assert!(workbench.read_with(cx, |w, _| w.vcs_prompt().is_none()), "no Go to prompt");
@@ -2156,7 +2159,11 @@ mod tests {
 
         wait_long(cx, "the log follows", |cx| log_subjects(&log, cx).len() == 3);
         run_action(cx, "vcs.log.rebaseOntoCommit", Some(json!(three)));
-        wait_long(cx, "the rebase", |_| rev(&root, "from-two") == three);
+        // Git moves the branch before it puts HEAD back on it: the rebase is over once it is told.
+        wait_long(cx, "the rebase", |cx| {
+            notification_titles(&workbench, cx).iter().any(|title| title.starts_with("Rebased from-two onto "))
+        });
+        assert_eq!(rev(&root, "from-two"), three);
         assert_eq!(git_in(&root, &["rev-parse", "--abbrev-ref", "HEAD"]), "from-two");
 
         let short_id = log.read_with(cx, |log, _| {

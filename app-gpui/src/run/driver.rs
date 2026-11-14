@@ -463,6 +463,16 @@ impl RunDriver {
         Self::persist(write, cx);
     }
 
+    /// A configuration was started under the debugger: it leads the chooser's recent configurations.
+    pub fn mark_recent(&mut self, id: &str, cx: &mut Context<Self>) {
+        let write = self.store.update(cx, |store, cx| {
+            let write = store.mark_recent(id);
+            cx.notify();
+            write
+        });
+        Self::persist(write, cx);
+    }
+
     /// Pins a configuration to the top of the chooser, or unpins it.
     pub fn toggle_pinned(&mut self, id: &str, cx: &mut Context<Self>) {
         let write = self.store.update(cx, |store, cx| {
@@ -1496,6 +1506,7 @@ mod tests {
     use crate::run::store::FlushSchedule;
     use gpui_kit::{AppContext as _, TestAppContext};
     use std::cell::RefCell;
+    mod proofs8_chooser_pinned;
 
     fn tomcat(params: &[(&str, &str)]) -> RunConfig {
         let mut config = blank_config("tomcat", "tomcat", "tomcat");

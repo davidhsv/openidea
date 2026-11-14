@@ -1585,6 +1585,7 @@ mod tests {
     use std::path::Path;
 
     mod proofs6_plugin_runtime;
+    mod proofs9_status_snapshot;
 
     const LABEL: &str = "w1";
 

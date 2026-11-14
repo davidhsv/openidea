@@ -117,6 +117,9 @@ pub(super) struct VcsSlot {
     /// What reached the repository's reading, for a test that times out to print.
     #[cfg(test)]
     trace: Vec<String>,
+    /// How many debounces the window armed, to tell in the trace which one fired.
+    #[cfg(test)]
+    debounces: u64,
 }
 
 /// The dialog an operation waits on.
@@ -1243,7 +1246,7 @@ impl Workbench {
         let state = &slot.state;
         let console: Vec<String> =
             slot.console.lines().iter().map(|line| format!("  {:?} {}", line.kind, line.text)).collect();
-        let trace: Vec<String> = slot.trace.iter().rev().take(40).rev().map(|line| format!("  {line}")).collect();
+        let trace: Vec<String> = slot.trace.iter().rev().take(80).rev().map(|line| format!("  {line}")).collect();
         format!(
             "busy={:?} operation={:?} available={} loading={} error={:?} status={} version={} queue={:?} \
              reading={} debounce={} git command={:?} read deferred={}\nconsole:\n{}\ntrace:\n{}",
@@ -1385,6 +1388,8 @@ impl Workbench {
             _widget_events: [events, controls],
             #[cfg(test)]
             trace: Vec::new(),
+            #[cfg(test)]
+            debounces: 0,
         });
         self.mount_conflicts(window);
         self.mount_shelf(window, cx);
@@ -1449,6 +1454,17 @@ impl Workbench {
             self.refresh_vcs(cx);
             return;
         }
+        #[cfg(test)]
+        let number = {
+            slot.debounces += 1;
+            let line = format!(
+                "debounce #{} armed for {delay:?} (the last one's task held: {})",
+                slot.debounces,
+                slot.debounce.is_some()
+            );
+            slot.trace.push(format!("{:.0} {line}", now_ms()));
+            slot.debounces
+        };
         // The repository is read once the events stop for a while, not once per event.
         slot.debounce = Some(cx.spawn(async move |workbench, cx| {
             cx.background_executor().timer(delay).await;
@@ -1456,7 +1472,7 @@ impl Workbench {
             // A read asked for while a Git command runs starts once the command ends.
             let _ = workbench.update(cx, |workbench, cx| {
                 #[cfg(test)]
-                workbench.vcs_trace("debounce fired".to_owned());
+                workbench.vcs_trace(format!("debounce #{number} fired"));
                 workbench.refresh_vcs(cx);
             });
         }));
@@ -1472,7 +1488,13 @@ impl Workbench {
     pub(super) fn request_vcs_refresh(&mut self, cx: &mut Context<Self>) -> oneshot::Receiver<()> {
         let (sender, receiver) = oneshot::channel();
         let Some(slot) = self.vcs.as_mut() else { return receiver };
-        match slot.queue.request(slot.state.available) {
+        let request = slot.queue.request(slot.state.available);
+        #[cfg(test)]
+        {
+            let line = format!("read asked: {request:?}");
+            slot.trace.push(format!("{:.0} {line}", now_ms()));
+        }
+        match request {
             RefreshRequest::Settled => {
                 // The receiver may be gone: nobody waits.
                 let _ = sender.send(());
