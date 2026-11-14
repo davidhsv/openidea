@@ -640,8 +640,8 @@
     "proof": "`vcs::conflicts::tests`"
   },
   "unit:src/features/vcs/__tests__/chunkOptimizer.test.ts": {
-    "status": "partial",
-    "proof": "`vcs::conflicts::tests::moves_a_block_that_starts_in_the_middle_of_a_copy_to_where_the_copy_starts`, `vcs::conflicts::tests::leaves_a_change_that_already_starts_and_ends_at_a_blank_line_alone`, `vcs_diff::comparison::chunk_optimizer::tests`; 2 of 4 cases: the diff (vcs_diff::comparison::by_line) and the three-way merge (vcs_more::merge_diff3) run the optimizer, but no test checks over random edits that it only rearranges the unchanged stretches, or that a merge places an added function between its neighbours rather than across their braces"
+    "status": "done",
+    "proof": "`vcs_diff::comparison::chunk_optimizer::tests`, `vcs_more::merge_diff3::tests::proofs8_chunk_optimizer`; 4 of 4 cases, all through the optimizer the diff and the three-way merge use"
   },
   "feature:vcs": {
     "status": "partial",
@@ -2296,8 +2296,8 @@
     "proof": "`editor_commands::vertical_motion::tests`"
   },
   "unit:src/editor/core/cm/caretCommands.test.ts": {
-    "status": "partial",
-    "proof": "`editor_commands::caret_commands::tests`; 5 of 6 cases: the base keymap case needs the commands bound in the editor"
+    "status": "done",
+    "proof": "`editor_commands::caret_commands::tests`, `editor::view::tests::proofs8_caret_commands::drops_codemirror_defaults_that_idea_uses_for_other_actions`; 6 of 6 cases, the base keymap case on the editor view with real keys"
   },
   "unit:src/editor/core/cm/columnMode.test.ts": {
     "status": "done",
@@ -2676,8 +2676,8 @@
     "proof": "`github::ui_model::tests`; the state and logic of 10 of 10 cases, on the model; the view is not built"
   },
   "unit:src/features/agents/AgentReply.test.tsx": {
-    "status": "partial",
-    "proof": "`agents::session_view::tests`, `agents::reply_actions::tests`, `workbench::tests::the_agents_actions_keep_the_conversation_docked_and_never_show_the_agents_key`; 2 of 4 cases on the conversation view, the others only on the model"
+    "status": "done",
+    "proof": "`agents::session_view::tests`, `agents::reply_actions::tests`; 3 of 3 cases with a native counterpart on the conversation view; \"reports a clipboard failure\" has none: a native clipboard write cannot be refused"
   },
   "unit:src/features/agents/AgentsView.test.tsx": {
     "status": "partial",
@@ -3233,7 +3233,7 @@
   },
   "unit:src/features/todo/todo.test.ts": {
     "status": "partial",
-    "proof": "`features_a::todo::tests`; 10 of 13 cases by name"
+    "proof": "`features_a::todo::tests`; 12 of 13 cases: \"decorates TODO comments only\" needs the editor to highlight TODO comments, which it does not"
   },
   "unit:src/features/vim/__tests__/conflicts.test.ts": {
     "status": "done",
@@ -3245,7 +3245,7 @@
   },
   "unit:src/features/vim/__tests__/vim.test.ts": {
     "status": "partial",
-    "proof": "`features_a::vim::mode::tests`, `features_a::vim::engine::tests`, `features_a::vim::ime::tests`; 15 of 17 cases by name"
+    "proof": "`features_a::vim::mode::tests`, `features_a::vim::engine::tests`, `features_a::vim::ime::tests`; 15 of 17 cases; \"inserts escaped key notation literally\" is proven only as far as the keys the mapping resolves to, and \"matches browser key events\" not at all: the editor feeds no keystrokes to a Vim engine"
   },
   "unit:src/features/analysis/analysis.test.ts": {
     "status": "done",
@@ -3368,8 +3368,8 @@
     "proof": "`features_b::viewers::markdown_view::tests`, `workbench::tests::a_markdown_file_opens_as_text_with_its_layouts_and_a_preview_that_follows_the_typing`"
   },
   "unit:src/features/viewers/markdown/previewOnly.test.tsx": {
-    "status": "partial",
-    "proof": "`features_b::viewers::preview_host::tests`, `features_b::viewers::preview::tests`; 4 of 5 cases on the view; \"reports the restored line when shown again after a remount\" only on the model"
+    "status": "done",
+    "proof": "`features_b::viewers::preview_host::tests`, `features_b::viewers::preview::tests`; 5 of 5 cases on the view"
   },
   "unit:src/features/viewers/markdown/previewScroll.test.tsx": {
     "status": "done",
@@ -3448,16 +3448,16 @@
     "proof": "`run::widget_view::tests`; 16 of 21 cases by name: the cases about debug sessions are open: the debugger is not drawn"
   },
   "unit:src/features/run/chooserPinned.test.tsx": {
-    "status": "partial",
-    "proof": "`run::chooser_view::tests`; 2 of 5 cases by name"
+    "status": "done",
+    "proof": "`run::chooser_view::tests`, `workbench::debug::tests::proofs8_recent::marks_a_configuration_recent_when_a_debug_session_starts`, `run::driver::tests::proofs8_chooser_pinned`, `workbench::tests::proofs9_run_chooser`; 5 of 5 cases, 3 on the chooser, pins across reloads and a run marking its configuration recent on the run driver the window uses"
   },
   "unit:src/features/run/chooserRunning.test.tsx": {
     "status": "done",
     "proof": "`run::chooser_view::tests`"
   },
   "unit:src/features/run/removal.test.tsx": {
-    "status": "partial",
-    "proof": "`run::edit_configs_view::tests`, `run::chooser_view::tests`; 7 of 11 cases by name"
+    "status": "done",
+    "proof": "`run::edit_configs_view::tests`, `run::chooser_view::tests`, `run::store::tests::proofs8_removal`; 11 of 11 cases, 9 on Edit Configurations or the chooser; a moved file dropping its context configuration and keeping the others are proven on the run store the window uses"
   },
   "unit:src/features/run/runConfigTypes.test.tsx": {
     "status": "partial",
@@ -3544,12 +3544,12 @@
     "proof": "`workbench::tests::a_merge_stopped_on_conflicts_opens_the_conflicts_dialog_and_accept_yours_resolves_the_file`, `workbench::tests::new_branch_rename_and_delete_change_the_repositorys_branches`, `workbench::vcs_operations::tests::pull_brings_in_a_commit_from_the_remote`, `workbench::vcs_operations::tests::update_project_pulls_with_the_method_chosen_and_resets_to_the_remote_branch`, `workbench::vcs_operations::tests::merge_merges_a_branch_and_abort_merge_undoes_one_stopped_on_conflicts`, `workbench::vcs_operations::tests::rebase_onto_a_branch_and_continue_a_rebase_that_stopped`, `workbench::vcs_operations::tests::reset_head_moves_the_branch_in_each_mode`, `workbench::vcs_operations::tests::new_tag_creates_a_tag_and_refuses_an_invalid_or_duplicate_name`, `workbench::vcs_operations::tests::stash_then_unstash_restores_the_change`, `workbench::vcs_operations::tests::rollback_restores_a_modified_file_and_deletes_an_added_one_only_when_asked`, `workbench::vcs_operations::tests::the_remotes_dialog_adds_edits_and_removes_a_remote`, `workbench::vcs_operations::tests::new_worktree_creates_one_that_the_worktrees_dialog_lists_and_removes`, `workbench::shelf::tests::shelving_selected_changes_reverts_them_and_the_shelf_lists_the_entry_with_its_files`, `workbench::shelf::tests::unshelve_restores_the_changes_into_the_chosen_list_and_removes_what_applied_when_asked`, `workbench::shelf::tests::new_changelists_set_active_receive_new_changes_and_edit_renames_them`, `workbench::shelf::tests::moving_changes_between_changelists_and_deleting_one_moves_its_changes_to_the_active_list`, `workbench::shelf::tests::create_patch_from_selected_changes_writes_a_file_that_applies_in_a_clean_clone`, `workbench::shelf::tests::apply_patch_from_a_file_and_from_the_clipboard_changes_the_working_tree`, `workbench::log_actions::tests::interactive_rebase_lists_the_commits_oldest_first_and_applies_the_plan`, `workbench::log_actions::tests::edit_commit_message_rewords_the_head_and_an_older_commit_and_undo_restores_it`, `workbench::log_actions::tests::undo_commit_brings_the_changes_back_and_offers_the_message`; the window opens and answers these dialogs: prompts, confirmations, Push, Conflicts, Pull, Update Project, Merge, Rebase, Reset, New Tag, Stash, Unstash, Rollback, Remotes and Edit Remote, Worktrees and New Worktree, Shelve, Unshelve, New and Edit Changelist, the target change list chooser, Create Patch, Apply Patch, Interactive Rebase and Edit Commit Message. Not yet: Clone, the modal Commit dialog, Compare with Branch, Changes Between, Directory Compare, the revision and commit choosers, and the Select Users, Date Range and Folders dialogs of the log filters"
   },
   "unit:src/features/build/build.test.tsx": {
-    "status": "partial",
-    "proof": "`build_window::model::tests`, `build_window::view::tests`; 12 of 13 cases by name"
+    "status": "done",
+    "proof": "`build_window::view::tests`, `workbench::tests::proofs8_build::registers_the_build_menu_actions_shortcuts_and_an_on_use_bottom_tool_window`, `build_window::model::tests`; 13 of 13 cases, 4 on the Build window or a project window; cases that assert a pure function and render nothing are proven on the function the application calls"
   },
   "unit:src/features/search/__tests__/fileStructure.test.tsx": {
-    "status": "partial",
-    "proof": "`everywhere::structure_window::tests`; 2 of 4 cases by name"
+    "status": "done",
+    "proof": "`everywhere::structure_window::tests`, `everywhere::structure_view::tests`; 4 of 4 cases on the File Structure popup"
   },
   "unit:src/features/search/__tests__/structureAutoscroll.test.tsx": {
     "status": "done",
@@ -3620,8 +3620,8 @@
     "proof": "`project_view::new_popup::tests`"
   },
   "unit:src/features/project-tree/fileRefactor.test.tsx": {
-    "status": "partial",
-    "proof": "`project_view::file_refactor::tests`, `project_view::file_dialogs::tests`; 5 of 6 cases by name"
+    "status": "done",
+    "proof": "`project_view::file_dialogs::tests`, `workbench::tests::rename_renames_the_file_its_reference_and_its_open_editor`, `workbench::tests::proofs8_file_refactor`, `project_view::file_refactor::tests`; 6 of 6 cases, 3 through the preview or a project window; cases that assert a pure function and render nothing are proven on the function the application calls"
   },
   "unit:src/editor/core/copyPathPopup.test.tsx": {
     "status": "partial",
@@ -3888,8 +3888,8 @@
     "proof": "`workbench::tests::a_selected_commit_shows_its_details_and_the_diff_of_a_changed_file`; called for a selection of several commits; the test selects one"
   },
   "ipc:vcs_log_users": {
-    "status": "partial",
-    "proof": "`workbench::tests::proofs_vcs::the_log_user_filter_lists_the_authors_and_keeps_the_chosen_ones_commits`; the User filter lists the authors read from the repository; it reads the selected repository only, where the webview reads every repository root"
+    "status": "done",
+    "proof": "`workbench::tests::proofs9_log_users`"
   },
   "ipc:fs_entry_kind": {
     "status": "done",
@@ -3964,8 +3964,8 @@
     "proof": "`editor::intelligence::tests::typing_completes_from_the_server_and_enter_inserts_the_item_with_its_import`"
   },
   "ipc:lsp_resolve_completion": {
-    "status": "partial",
-    "proof": "`editor_lsp::completion_view::tests::f1_shows_the_selected_rows_documentation_once_resolved`; the lookup shows a row's documentation once a resolve answer is handed to it. Missing: no test has a server answer completionItem/resolve through the window: the import in `editor::intelligence::tests::typing_completes_from_the_server_and_enter_inserts_the_item_with_its_import` comes in the completion answer itself, not from resolve"
+    "status": "done",
+    "proof": "`editor::intelligence::tests::proofs9_resolve`"
   },
   "ipc:lsp_goto": {
     "status": "done",
@@ -4092,8 +4092,8 @@
     "proof": "`workbench::tests::settings_appearance_applies_the_chosen_theme`; run through the registry it opens Settings on the Appearance page, where the theme chosen and applied is the one the settings name and the windows draw with; the page's own gaps are on its row (settings:appearance)"
   },
   "action:plugins.settings": {
-    "status": "partial",
-    "proof": "`workbench::tests::settings_for_new_projects_and_plugins_open_on_their_pages`; opens Settings on Plugins; in that test there is no plugin host and the page is unavailable; the listing through the host is proven on the Welcome page and the Plugins window, not inside Settings"
+    "status": "done",
+    "proof": "`workbench::plugins_window::tests::proofs9_settings_plugins`"
   },
   "point.registerToolWindow:problems": {
     "status": "partial",
@@ -5800,8 +5800,8 @@
     "proof": "`workbench::plugins_window::tests::a_secret_typed_into_the_page_is_stored_through_the_host_and_never_shown_emitted_or_logged`, `plugin_models::plugins_page::tests::stores_and_removes_a_declared_secret_without_showing_its_value`; Enter in the secret field calls PluginHost::set_secret with the plugin, the name and the typed value, which reaches the secret store and is in no event, log line or listing; removing a secret is the same command with no value, which the page emits"
   },
   "ipc:plugin_status_items": {
-    "status": "partial",
-    "proof": "`workbench::plugin_runtime::tests::a_declared_status_item_shows_and_a_click_runs_its_plugin_command`, `workbench::plugin_runtime::tests::keeps_a_window_status_override_above_global_updates_and_falls_back_on_removal`; the window asks PluginHost::status_snapshot for its label on every project change and listing, as the adapter does. Missing: every asserted item arrives by a status event, so no test needs the snapshot (an item set before the window opened)"
+    "status": "done",
+    "proof": "`workbench::plugin_runtime::tests::proofs9_status_snapshot`"
   },
   "ipc:plugin_context_keys": {
     "status": "done",
@@ -7058,5 +7058,25 @@
   "ipc:agent_changes": {
     "status": "partial",
     "proof": "`workbench::tests::proofs6_agents::a_finished_turn_lists_the_file_the_agent_edited_among_the_tasks_changes`; the test reads the agents store: no native view shows a task's changes"
+  },
+  "ipc:syntax_identifiers_in_files": {
+    "status": "done",
+    "proof": "`editor::intelligence::tests::proofs9_syntax_usages`"
+  },
+  "ipc:syntax_identifiers": {
+    "status": "done",
+    "proof": "`editor::intelligence::tests::proofs9_syntax_usages`"
+  },
+  "ipc:cancel_task": {
+    "status": "done",
+    "proof": "`editor::intelligence::tests::proofs9_cancel_task`"
+  },
+  "ipc:gh_pr_prepare_diff": {
+    "status": "done",
+    "proof": "`workbench::github::tests::proofs9_github`"
+  },
+  "ipc:plugin_assets": {
+    "status": "done",
+    "proof": "`workbench::plugin_tool_windows::tests::proofs9_view_icon`"
   }
 }

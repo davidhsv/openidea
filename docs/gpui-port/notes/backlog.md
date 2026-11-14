@@ -296,3 +296,10 @@ Standing facts: inventory.mjs runs cargo (never run it while an integrator works
 - Threads: the app releases a project's threads (0 left); the test binary peaks at 3,340.
 - After stability: diff tools → database extras (+ proofs6_database_console.rs) → build tools (seam first).
 - proofs7 rows merged (45 done, 16 partial; 3 stale proofs fixed) → inventory 1,119/3,145. Small gaps: platform/project.test.ts opening cases are proven on ProjectSession, which nothing in the app uses; agents.send from the Project view sends one path (webview: every selected one) and has no virtual-document test; ipc:app_quit left partial (process exit not observable).
+
+## State after the stability slice (2026-11-14, c8d0b092)
+
+- Suite 6,835, STABLE under load (10 runs by the integration, 3 of mine at load 16). D97 written. Rows of proofs8/proofs9 recorded → inventory 1,137/3,145.
+- RUNNING (cargo, background): Tauri workspace suite → $S/tauri_suite5.log (crates/ide-vfs changed).
+- NEXT (cargo): diff tools integrator (+ Part 0: Stop when SIGINT is ignored — crates/ide-run: escalate as the webview/backend intends? read first; the Commit-panel gate hypothesis for the Tauri UI is not ours to fix).
+- Then: database extras (+ proofs6_database_console.rs) → build tools (seam first). No drafts pending besides those; NEXT DRAFTS by the gap index and ipc_map class C: plugins 27 commands, vcs 18, run 16, editor/lsp 15, settings 15; M groups: plugin host app-level WIT tests, agent conversation as an editor tab, Go to Line as a dialog, shelf rows' time, error log sink.
